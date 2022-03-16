@@ -1,0 +1,56 @@
+[
+  {
+    "namespace": "com.tigergraph.fake.avro",
+    "type": "record",
+    "name": "Address",
+    "fields": [
+      {
+        "name": "line1",
+        "type": "string"
+      },
+      {
+        "name": "line2",
+        "type": ["string", "null"]
+      },
+      {
+        "name": "city",
+        "type": "string"
+      },
+      {
+        "name": "state",
+        "type": "string"
+      },
+      {
+        "name": "zipcode",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "namespace": "com.tigergraph.fake.avro",
+    "type": "record",
+    "name": "Person",
+    "fields": [
+      {
+        "name": "id",
+        "type": "int"
+      },
+      {
+        "name": "firstName",
+        "type": "string"
+      },
+      {
+        "name": "lastName",
+        "type": "string"
+      },
+      {
+        "name": "age",
+        "type": "int"
+      },
+      {
+        "name": "address",
+        "type": "Address"
+      }
+    ]
+  }
+]
