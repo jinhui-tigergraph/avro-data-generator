@@ -24,3 +24,5 @@ hs_err_pid*
 
 .idea/
 target/
+
+!avro-tools-1.11.0.jar
