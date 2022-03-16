@@ -23,7 +23,7 @@ Following are the environment on my local and works fine. Other versions of Java
 ## Build
 ### Build Avro Schema File
 ```shell
- java -jar avro-tools-1.11.0.jar compile schema ./avro/* ./src/main/java/
+java -jar avro-tools-1.11.0.jar compile schema ./avro/* ./src/main/java/
 ```
 
 ### Build Java Project
