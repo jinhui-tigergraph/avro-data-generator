@@ -147,6 +147,9 @@ public class Generator {
                 ProducerRecord<byte[], Person> record = new ProducerRecord<>(topic, key, p);
                 producer.send(record);
             }
+            producer.flush();
+            producer.close();
+            System.out.printf("[Schema Registry] Sent %d messages to topic [%s]\n", count, topic);
         } else {
             // without schema registry, this will put multiple fake data into a single Kafka message.
             // see details at https://avro.apache.org/docs/current/spec.html#Object+Container+Files
@@ -164,10 +167,9 @@ public class Generator {
             dataFileWriter.close();
             ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, null, outputStream.toByteArray());
             producer.send(record);
+            producer.flush();
+            producer.close();
+            System.out.printf("[NO Schema Registry] Wrapped %d records into a single message to topic [%s]\n", count, topic);
         }
-        producer.flush();
-        producer.close();
-
-        System.out.printf("Sent %d messages to topic [%s]", count, topic);
     }
 }
