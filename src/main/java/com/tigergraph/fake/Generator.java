@@ -3,6 +3,10 @@ package com.tigergraph.fake;
 import com.github.javafaker.Faker;
 import com.tigergraph.fake.avro.Address;
 import com.tigergraph.fake.avro.Person;
+import org.apache.avro.Schema;
+import org.apache.avro.file.DataFileWriter;
+import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.EncoderFactory;
@@ -13,7 +17,10 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 import java.util.Random;
@@ -111,7 +118,7 @@ public class Generator {
         return p;
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         CommandLine cmd = parseCommandLine(args);
 
         topic = cmd.getOptionValue(TOPIC_LONG_OPTION);
@@ -132,6 +139,8 @@ public class Generator {
         rand = new Random();
 
         if (!cmd.hasOption(NO_SCHEMA_REGISTRY_LONG_OPTION)) {
+            // with schema registry
+            // wire format details: https://docs.confluent.io/platform/current/schema-registry/serdes-develop/index.html#wire-format
             for (int i = 0; i < count; i++) {
                 Person p = generateFakePerson(i);
                 byte[] key = (p.getFirstName().toString() + p.getLastName().toString()).getBytes(StandardCharsets.UTF_8);
@@ -139,24 +148,22 @@ public class Generator {
                 producer.send(record);
             }
         } else {
+            // without schema registry, this will put multiple fake data into a single Kafka message.
+            // see details at https://avro.apache.org/docs/current/spec.html#Object+Container+Files
+            InputStream inputStream = Generator.class.getClassLoader().getResourceAsStream("person.avsc");
+            Schema schema = new Schema.Parser().parse(inputStream);
+            DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
+            DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter);
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            dataFileWriter.create(schema, outputStream);
+
             for (int i = 0; i < count; i++) {
                 Person p = generateFakePerson(i);
-                byte[] key = (p.getFirstName().toString() + p.getLastName().toString()).getBytes(StandardCharsets.UTF_8);
-                // serialize Avro data manually
-                DatumWriter recordDatumWriter = new SpecificDatumWriter<>(Person.class);
-                ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-                BinaryEncoder binaryEncoder = EncoderFactory.get().directBinaryEncoder(outputStream, null);
-                try{
-                    recordDatumWriter.write(p, binaryEncoder);
-                    binaryEncoder.flush();
-                    outputStream.close();
-                }
-                catch(IOException e){
-                    e.printStackTrace();
-                }
-                ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, key, outputStream.toByteArray());
-                producer.send(record);
+                dataFileWriter.append(p);
             }
+            dataFileWriter.close();
+            ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, null, outputStream.toByteArray());
+            producer.send(record);
         }
         producer.flush();
         producer.close();
