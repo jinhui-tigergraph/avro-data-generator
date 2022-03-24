@@ -16,10 +16,7 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
@@ -37,6 +34,8 @@ public class Generator {
     private static final String SCHEMA_REGISTRY_URL_LONG_OPTION = "schema-registry-url";
     private static final String COUNT_SHORT_OPTION = "c";
     private static final String COUNT_LONG_OPTION = "count";
+    private static final String FILE_SHORT_OPTION = "f";
+    private static final String FILE_LONG_OPTION = "file";
 
     private static String topic;
     private static int count;
@@ -65,6 +64,9 @@ public class Generator {
         Option count = new Option(COUNT_SHORT_OPTION, COUNT_LONG_OPTION, true, "Number of messages to generate");
         options.addOption(count);
 
+        Option filePath = new Option(FILE_SHORT_OPTION, FILE_LONG_OPTION, true, "Avro file to produce");
+        options.addOption(filePath);
+
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
         try {
@@ -81,8 +83,14 @@ public class Generator {
     }
 
     private static void validateCmd(CommandLine cmd) throws ParseException {
-        if (!cmd.hasOption(NO_SCHEMA_REGISTRY_LONG_OPTION) && !cmd.hasOption(SCHEMA_REGISTRY_URL_LONG_OPTION)) {
-            throw new ParseException("--schema-registry-url MUST be set if --no-schema-registry is NOT provided");
+        if (!cmd.hasOption(FILE_LONG_OPTION)) {
+            if (!cmd.hasOption(NO_SCHEMA_REGISTRY_LONG_OPTION) && !cmd.hasOption(SCHEMA_REGISTRY_URL_LONG_OPTION)) {
+                throw new ParseException("--schema-registry-url MUST be set if --no-schema-registry is NOT provided");
+            }
+        } else {
+            if (cmd.hasOption(NO_SCHEMA_REGISTRY_LONG_OPTION) || cmd.hasOption(SCHEMA_REGISTRY_URL_LONG_OPTION)) {
+                throw new ParseException("neither --schema-registry-url nor --no-schema-registry should be set when producing messages from a file");
+            }
         }
     }
 
@@ -91,7 +99,7 @@ public class Generator {
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, cmd.getOptionValue(BOOTSTRAP_SERVER_LONG_OPTION));
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, org.apache.kafka.common.serialization.ByteArraySerializer.class);
 
-        if (!cmd.hasOption(NO_SCHEMA_REGISTRY_SHORT_OPTION)) {
+        if (cmd.hasOption(SCHEMA_REGISTRY_URL_LONG_OPTION)) {
             props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, io.confluent.kafka.serializers.KafkaAvroSerializer.class);
             props.put("schema.registry.url", cmd.getOptionValue(SCHEMA_REGISTRY_URL_LONG_OPTION));
         } else {
@@ -122,54 +130,60 @@ public class Generator {
         CommandLine cmd = parseCommandLine(args);
 
         topic = cmd.getOptionValue(TOPIC_LONG_OPTION);
-        if (!cmd.hasOption(COUNT_LONG_OPTION)) {
-            count = 10;
-        } else {
-            try {
-                count = Integer.parseInt(cmd.getOptionValue(COUNT_LONG_OPTION));
-            } catch (NumberFormatException e) {
-                System.out.printf("--count must be an integer, but got: %s", cmd.getOptionValue(COUNT_LONG_OPTION));
-                System.exit(1);
-            }
-        }
         Properties props = buildProps(cmd);
         producer = new KafkaProducer(props);
 
-        faker = new Faker();
-        rand = new Random();
-
-        if (!cmd.hasOption(NO_SCHEMA_REGISTRY_LONG_OPTION)) {
-            // with schema registry
-            // wire format details: https://docs.confluent.io/platform/current/schema-registry/serdes-develop/index.html#wire-format
-            for (int i = 0; i < count; i++) {
-                Person p = generateFakePerson(i);
-                byte[] key = (p.getFirstName().toString() + p.getLastName().toString()).getBytes(StandardCharsets.UTF_8);
-                ProducerRecord<byte[], Person> record = new ProducerRecord<>(topic, key, p);
-                producer.send(record);
-            }
-            producer.flush();
-            producer.close();
-            System.out.printf("[Schema Registry] Sent %d messages to topic [%s]\n", count, topic);
-        } else {
-            // without schema registry, this will put multiple fake data into a single Kafka message.
-            // see details at https://avro.apache.org/docs/current/spec.html#Object+Container+Files
-            InputStream inputStream = Generator.class.getClassLoader().getResourceAsStream("person.avsc");
-            Schema schema = new Schema.Parser().parse(inputStream);
-            DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
-            DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter);
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            dataFileWriter.create(schema, outputStream);
-
-            for (int i = 0; i < count; i++) {
-                Person p = generateFakePerson(i);
-                dataFileWriter.append(p);
-            }
-            dataFileWriter.close();
-            ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, null, outputStream.toByteArray());
+        if (cmd.hasOption(FILE_LONG_OPTION)) {
+            String filePath = cmd.getOptionValue(FILE_LONG_OPTION);
+            InputStream is = new FileInputStream(filePath);
+            ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, null, is.readAllBytes());
             producer.send(record);
-            producer.flush();
-            producer.close();
-            System.out.printf("[NO Schema Registry] Wrapped %d records into a single message to topic [%s]\n", count, topic);
+            System.out.printf("[File] Sent messages to topic [%s]. File: %s\n", topic, filePath);
+        } else {
+            if (!cmd.hasOption(COUNT_LONG_OPTION)) {
+                // produce 10 messages by default
+                count = 10;
+            } else {
+                try {
+                    count = Integer.parseInt(cmd.getOptionValue(COUNT_LONG_OPTION));
+                } catch (NumberFormatException e) {
+                    System.out.printf("--count must be an integer, but got: %s", cmd.getOptionValue(COUNT_LONG_OPTION));
+                    System.exit(1);
+                }
+            }
+            faker = new Faker();
+            rand = new Random();
+            if (!cmd.hasOption(NO_SCHEMA_REGISTRY_LONG_OPTION)) {
+                // with schema registry
+                // wire format details: https://docs.confluent.io/platform/current/schema-registry/serdes-develop/index.html#wire-format
+                for (int i = 0; i < count; i++) {
+                    Person p = generateFakePerson(i);
+                    byte[] key = (p.getFirstName().toString() + p.getLastName().toString()).getBytes(StandardCharsets.UTF_8);
+                    ProducerRecord<byte[], Person> record = new ProducerRecord<>(topic, key, p);
+                    producer.send(record);
+                }
+                System.out.printf("[Schema Registry] Sent %d messages to topic [%s]\n", count, topic);
+            } else {
+                // without schema registry, this will put multiple fake data into a single Kafka message.
+                // see details at https://avro.apache.org/docs/current/spec.html#Object+Container+Files
+                InputStream inputStream = Generator.class.getClassLoader().getResourceAsStream("person.avsc");
+                Schema schema = new Schema.Parser().parse(inputStream);
+                DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
+                DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter);
+                ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+                dataFileWriter.create(schema, outputStream);
+
+                for (int i = 0; i < count; i++) {
+                    Person p = generateFakePerson(i);
+                    dataFileWriter.append(p);
+                }
+                dataFileWriter.close();
+                ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, null, outputStream.toByteArray());
+                producer.send(record);
+                System.out.printf("[NO Schema Registry] Wrapped %d records into a single message to topic [%s]\n", count, topic);
+            }
         }
+        producer.flush();
+        producer.close();
     }
 }
