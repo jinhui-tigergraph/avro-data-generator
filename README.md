@@ -37,17 +37,23 @@ Then a jar file named `avro-data-generator-1.0-SNAPSHOT-jar-with-dependencies.ja
 java -jar ./target/avro-data-generator-1.0-SNAPSHOT.jar
  -b,--bootstrap-server <arg>      Kafka bootstrap server
  -c,--count <arg>                 Number of messages to generate
+ -f,--file <arg>                  Avro file to produce
  -n,--no-schema-registry          Don't use schema registry
  -s,--schema-registry-url <arg>   Schema registry url
  -t,--topic <arg>                 Kafka topic to produce messages into
 ```
 
-### Sample Without Schema Registry
+### Sample Command Without Schema Registry
 ```shell
 java -jar target/avro-data-generator-1.0-SNAPSHOT-jar-with-dependencies.jar --bootstrap-server localhost:9092 --topic test --count 10 --no-schema-registry
 ```
 
-### Sample With Schema Registry
+### Sample Command With Schema Registry
 ```shell
 java -jar target/avro-data-generator-1.0-SNAPSHOT-jar-with-dependencies.jar --bootstrap-server localhost:9092 --topic test-with-registry --count 10 --schema-registry-url http://localhost:8081
+```
+
+### Sample Command with File Path
+```shell
+java -jar target/avro-data-generator-1.0-SNAPSHOT-jar-with-dependencies.jar --bootstrap-server localhost:9092 --topic test-with-file --file /path/to/avro/test/file.avro
 ```
