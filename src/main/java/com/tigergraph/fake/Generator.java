@@ -36,6 +36,8 @@ public class Generator {
     private static final String COUNT_LONG_OPTION = "count";
     private static final String FILE_SHORT_OPTION = "f";
     private static final String FILE_LONG_OPTION = "file";
+    private static final String PROPERTIES_SHORT_OPTION = "p";
+    private static final String PROPERTIES_LONG_OPTION = "properties";
 
     private static String topic;
     private static int count;
@@ -67,6 +69,9 @@ public class Generator {
         Option filePath = new Option(FILE_SHORT_OPTION, FILE_LONG_OPTION, true, "Avro file to produce");
         options.addOption(filePath);
 
+        Option propertiesPath = new Option(PROPERTIES_SHORT_OPTION, PROPERTIES_LONG_OPTION, true, "Producer properties file");
+        options.addOption(propertiesPath);
+
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
         try {
@@ -94,7 +99,7 @@ public class Generator {
         }
     }
 
-    private static Properties buildProps(CommandLine cmd) {
+    private static Properties buildProps(CommandLine cmd) throws IOException {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, cmd.getOptionValue(BOOTSTRAP_SERVER_LONG_OPTION));
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, org.apache.kafka.common.serialization.ByteArraySerializer.class);
@@ -104,6 +109,11 @@ public class Generator {
             props.put("schema.registry.url", cmd.getOptionValue(SCHEMA_REGISTRY_URL_LONG_OPTION));
         } else {
             props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, org.apache.kafka.common.serialization.ByteArraySerializer.class);
+        }
+
+        if (cmd.hasOption(PROPERTIES_LONG_OPTION)) {
+            InputStream propsInput = new FileInputStream(cmd.getOptionValue(PROPERTIES_LONG_OPTION));
+            props.load(propsInput);
         }
         return props;
     }
